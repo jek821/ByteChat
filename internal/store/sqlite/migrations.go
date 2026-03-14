@@ -23,7 +23,24 @@ var migrations = []Migration{
 }
 
 func migrate(db *sql.DB) error {
-	if err := db.Exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)"); err != nil {
+	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)"); err != nil {
 		return err
 	}
+
+	var latestVersion int
+	if err := db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_migrations").Scan(&latestVersion); err != nil {
+		return err
+	}
+
+	for _, migration := range migrations {
+		if migration.version <= latestVersion {
+			continue
+		}
+		for _, stmt := range migration.stmts {
+			if _, err := db.Exec(stmt); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
