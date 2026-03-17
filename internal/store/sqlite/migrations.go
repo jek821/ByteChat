@@ -1,13 +1,15 @@
 package sqlite
 
-import "database/sql"
+import (
+	"database/sql"
+)
 
-type Migration struct {
+type migration struct {
 	version int
 	stmts   []string
 }
 
-var migrations = []Migration{
+var migrations = []migration{
 	{
 		version: 1,
 		stmts: []string{
@@ -32,15 +34,35 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 
-	for _, migration := range migrations {
-		if migration.version <= latestVersion {
+	for _, m := range migrations {
+		if m.version <= latestVersion {
 			continue
 		}
-		for _, stmt := range migration.stmts {
-			if _, err := db.Exec(stmt); err != nil {
-				return err
-			}
+		if err := applyMigration(db, m); err != nil {
+			return err
 		}
+
+	}
+	return nil
+}
+
+func applyMigration(db *sql.DB, m migration) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	for _, stmt := range m.stmts {
+		if _, err := tx.Exec(stmt); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	if _, err := tx.Exec("INSERT INTO schema_migrations(version) VALUES (?)", m.version); err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 	return nil
 }

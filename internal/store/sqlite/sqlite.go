@@ -34,6 +34,11 @@ func New(path string) (*Store, error) {
 		return nil, err
 	}
 
+	if err := migrate(newDb); err != nil {
+		newDb.Close()
+		return nil, err
+	}
+
 	return &Store{db: newDb}, nil
 }
 
