@@ -2,8 +2,8 @@ package sqlite
 
 import (
 	"database/sql"
-
 	_ "modernc.org/sqlite"
+	"time"
 )
 
 type Store struct {
@@ -40,6 +40,24 @@ func New(path string) (*Store, error) {
 	}
 
 	return &Store{db: newDb}, nil
+}
+
+func (s *Store) CreateUser(username string, passwordHash []byte) (int64, error) {
+	createdAt := time.Now().Unix()
+	userResult, err := s.db.Exec(
+		`INSERT INTO users(username, password_hash, created_at) VALUES (?, ?, ?)`,
+		username,
+		passwordHash,
+		createdAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	userId, err := userResult.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return userId, nil
 }
 
 func (s *Store) Close() error {
