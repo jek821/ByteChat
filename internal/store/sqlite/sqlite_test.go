@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"path/filepath"
 	"testing"
@@ -24,7 +25,7 @@ func TestCreateNewUser(t *testing.T) {
 
 	fakePasswordHash := []byte{0, 1, 0, 1, 0, 1, 0, 1}
 
-	expectedUserId, err := store.CreateUser("jacob", fakePasswordHash)
+	expectedUserId, err := store.CreateUser(context.Background(), "jacob", fakePasswordHash)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
@@ -83,5 +84,48 @@ func TestCreateNewUser(t *testing.T) {
 
 	if !found {
 		t.Fatal("Expected to find one user row, found none")
+	}
+}
+
+func TestSetAndGetE2EKeyBundle(t *testing.T) {
+	tempDir := t.TempDir()
+	store, err := New(filepath.Join(tempDir, "test.db"))
+	if err != nil {
+		t.Fatalf("New returned error: %v", err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+
+	userID, err := store.CreateUser(ctx, "alice", []byte("fakehash"))
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	pubKey := []byte("fake-public-key")
+	encPrivKey := []byte("fake-encrypted-private-key")
+	salt := []byte("fake-salt")
+
+	if err := store.SetE2EKeyBundle(ctx, userID, pubKey, encPrivKey, salt); err != nil {
+		t.Fatalf("SetE2EKeyBundle: %v", err)
+	}
+
+	gotPub, err := store.GetE2EPublicKey(ctx, "alice")
+	if err != nil {
+		t.Fatalf("GetE2EPublicKey: %v", err)
+	}
+	if !bytes.Equal(gotPub, pubKey) {
+		t.Fatalf("GetE2EPublicKey: got %v want %v", gotPub, pubKey)
+	}
+
+	gotEncPriv, gotSalt, err := store.GetE2EKeyBundle(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetE2EKeyBundle: %v", err)
+	}
+	if !bytes.Equal(gotEncPriv, encPrivKey) {
+		t.Fatalf("GetE2EKeyBundle encPrivKey: got %v want %v", gotEncPriv, encPrivKey)
+	}
+	if !bytes.Equal(gotSalt, salt) {
+		t.Fatalf("GetE2EKeyBundle salt: got %v want %v", gotSalt, salt)
 	}
 }

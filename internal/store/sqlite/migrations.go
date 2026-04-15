@@ -22,6 +22,19 @@ var migrations = []migration{
 			"CREATE INDEX IF NOT EXISTS idx_messages_to_user_delivered ON messages(to_user_id, delivered_at)",
 		},
 	},
+	{
+		version: 2,
+		stmts: []string{
+			"ALTER TABLE users ADD COLUMN e2e_public_key BLOB",
+		},
+	},
+	{
+		version: 3,
+		stmts: []string{
+			"ALTER TABLE users ADD COLUMN e2e_encrypted_private_key BLOB",
+			"ALTER TABLE users ADD COLUMN e2e_key_salt BLOB",
+		},
+	},
 }
 
 func migrate(db *sql.DB) error {
