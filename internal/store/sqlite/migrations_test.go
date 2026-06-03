@@ -72,7 +72,7 @@ func TestNewRunsInitialMigration(t *testing.T) {
 
 	t.Logf("latest migration version: %d", version)
 
-	if version != 3 {
-		t.Fatalf("expected migration version 3, got %d", version)
+	if version != 4 {
+		t.Fatalf("expected migration version 4, got %d", version)
 	}
 }

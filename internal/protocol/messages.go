@@ -23,5 +23,18 @@ type ReceiveMessage struct {
 }
 
 type ContactsResponse struct {
-	Usernames []string `json:"usernames"`
+	Friends         []string `json:"friends"`
+	PendingRequests []string `json:"pending_requests"`
+}
+
+type FriendRequest struct {
+	ToUsername string `json:"to_username"`
+}
+
+type AcceptFriendRequest struct {
+	FromUsername string `json:"from_username"`
+}
+
+type FriendRequestReceived struct {
+	FromUsername string `json:"from_username"`
 }

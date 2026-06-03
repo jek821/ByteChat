@@ -19,7 +19,12 @@ type Store interface {
 	SaveMessage(ctx context.Context, fromUserID, toUserID int64, body string) (int64, error)
 	ListUndeliveredMessages(ctx context.Context, userID int64) ([]StoredMessage, error)
 	MarkMessageDelivered(ctx context.Context, messageID int64) error
-	ListUsernames(ctx context.Context, excludeUserID int64) ([]string, error)
+
+	ListFriends(ctx context.Context, userID int64) ([]string, error)
+	ListIncomingFriendRequests(ctx context.Context, userID int64) ([]string, error)
+	CreateFriendRequest(ctx context.Context, fromUserID, toUserID int64) error
+	AcceptFriendRequest(ctx context.Context, userID, fromUserID int64) error
+	AreFriends(ctx context.Context, userID, otherUserID int64) (bool, error)
 
 	SetE2EKeyBundle(ctx context.Context, userID int64, pubKey, encPrivKey, salt []byte) error
 	GetE2EPublicKey(ctx context.Context, username string) ([]byte, error)

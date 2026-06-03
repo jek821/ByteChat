@@ -35,6 +35,28 @@ var migrations = []migration{
 			"ALTER TABLE users ADD COLUMN e2e_key_salt BLOB",
 		},
 	},
+	{
+		version: 4,
+		stmts: []string{
+			`CREATE TABLE IF NOT EXISTS friend_requests (
+				request_id INTEGER PRIMARY KEY,
+				from_user_id INTEGER NOT NULL,
+				to_user_id INTEGER NOT NULL,
+				created_at INTEGER NOT NULL,
+				UNIQUE(from_user_id, to_user_id),
+				FOREIGN KEY(from_user_id) REFERENCES users(user_id),
+				FOREIGN KEY(to_user_id) REFERENCES users(user_id)
+			)`,
+			`CREATE TABLE IF NOT EXISTS friends (
+				user_id INTEGER NOT NULL,
+				friend_user_id INTEGER NOT NULL,
+				created_at INTEGER NOT NULL,
+				PRIMARY KEY(user_id, friend_user_id),
+				FOREIGN KEY(user_id) REFERENCES users(user_id),
+				FOREIGN KEY(friend_user_id) REFERENCES users(user_id)
+			)`,
+		},
+	},
 }
 
 func migrate(db *sql.DB) error {

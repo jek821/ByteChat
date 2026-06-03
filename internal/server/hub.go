@@ -41,6 +41,12 @@ func (h *Hub) unregister(userID int64, c *clientConn) {
 	}
 }
 
+func (h *Hub) clientForUser(userID int64) *clientConn {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.clients[userID]
+}
+
 func (h *Hub) handleConn(raw net.Conn) {
 	conn := newClientConn(raw, h)
 	defer conn.close()
@@ -66,7 +72,6 @@ func (h *Hub) handleConn(raw net.Conn) {
 		}
 		if err := h.handlePacket(ctx, conn, pkt); err != nil {
 			log.Printf("tcp handler error for %s: %v", conn.username, err)
-			return
 		}
 	}
 }
@@ -79,6 +84,18 @@ func (h *Hub) handlePacket(ctx context.Context, conn *clientConn, pkt protocol.P
 			return err
 		}
 		return h.deliver(ctx, conn, msg)
+	case protocol.FRIEND_REQUEST:
+		var req protocol.FriendRequest
+		if err := protocol.UnmarshalData(pkt.Data, &req); err != nil {
+			return err
+		}
+		return h.handleFriendRequest(ctx, conn, req)
+	case protocol.ACCEPT_FRIEND_REQUEST:
+		var req protocol.AcceptFriendRequest
+		if err := protocol.UnmarshalData(pkt.Data, &req); err != nil {
+			return err
+		}
+		return h.handleAcceptFriendRequest(ctx, conn, req)
 	default:
 		return nil
 	}
@@ -90,9 +107,7 @@ func (h *Hub) deliver(ctx context.Context, sender *clientConn, msg protocol.Send
 		return err
 	}
 
-	h.mu.RLock()
-	recipient := h.clients[toUserID]
-	h.mu.RUnlock()
+	recipient := h.clientForUser(toUserID)
 	if recipient == nil {
 		return nil
 	}
@@ -106,6 +121,43 @@ func (h *Hub) deliver(ctx context.Context, sender *clientConn, msg protocol.Send
 		return err
 	}
 	return h.messages.MarkDelivered(ctx, msgID)
+}
+
+func (h *Hub) handleFriendRequest(ctx context.Context, sender *clientConn, req protocol.FriendRequest) error {
+	toUserID, err := h.messages.SendFriendRequest(ctx, sender.userID, req.ToUsername)
+	if err != nil {
+		return err
+	}
+
+	recipient := h.clientForUser(toUserID)
+	if recipient == nil {
+		return nil
+	}
+
+	return recipient.writePacket(protocol.FRIEND_REQUEST_RECEIVED, protocol.FriendRequestReceived{
+		FromUsername: sender.username,
+	})
+}
+
+func (h *Hub) handleAcceptFriendRequest(ctx context.Context, accepter *clientConn, req protocol.AcceptFriendRequest) error {
+	fromUserID, err := h.messages.AcceptFriendRequest(ctx, accepter.userID, req.FromUsername)
+	if err != nil {
+		return err
+	}
+
+	h.refreshContacts(ctx, accepter.userID)
+	h.refreshContacts(ctx, fromUserID)
+	return nil
+}
+
+func (h *Hub) refreshContacts(ctx context.Context, userID int64) {
+	client := h.clientForUser(userID)
+	if client == nil {
+		return
+	}
+	if err := client.sendContacts(ctx); err != nil {
+		log.Printf("refresh contacts for user %d: %v", userID, err)
+	}
 }
 
 type clientConn struct {
@@ -157,11 +209,7 @@ func (c *clientConn) authenticate(ctx context.Context) error {
 }
 
 func (c *clientConn) sendBootstrap(ctx context.Context) error {
-	contacts, err := c.hub.messages.ListContacts(ctx, c.userID)
-	if err != nil {
-		return err
-	}
-	if err := c.writePacket(protocol.CONTACTS_RESPONSE, protocol.ContactsResponse{Usernames: contacts}); err != nil {
+	if err := c.sendContacts(ctx); err != nil {
 		return err
 	}
 
@@ -183,6 +231,17 @@ func (c *clientConn) sendBootstrap(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (c *clientConn) sendContacts(ctx context.Context) error {
+	contacts, err := c.hub.messages.ListContacts(ctx, c.userID)
+	if err != nil {
+		return err
+	}
+	return c.writePacket(protocol.CONTACTS_RESPONSE, protocol.ContactsResponse{
+		Friends:         contacts.Friends,
+		PendingRequests: contacts.PendingRequests,
+	})
 }
 
 func (c *clientConn) writePacket(code protocol.Code, payload any) error {
@@ -212,7 +271,6 @@ func (c *clientConn) close() {
 	_ = c.conn.Close()
 }
 
-// Read satisfies io.Reader via conn - used by protocol.Read.
 func (c *clientConn) Read(p []byte) (int, error) {
 	return c.conn.Read(p)
 }

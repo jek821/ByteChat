@@ -15,12 +15,19 @@ type ChatEventKind int
 const (
 	EventMessage ChatEventKind = iota
 	EventContacts
+	EventFriendRequest
 )
 
 type ChatEvent struct {
 	Kind     ChatEventKind
 	Message  Message
-	Contacts []string
+	Contacts Contacts
+	From     string
+}
+
+type Contacts struct {
+	Friends         []string
+	PendingRequests []string
 }
 
 type Message struct {
@@ -98,21 +105,18 @@ func (c *ChatClient) Connect(token string) error {
 }
 
 func (c *ChatClient) Send(toUsername, body string) error {
-	c.mu.Lock()
-	conn := c.conn
-	c.mu.Unlock()
-	if conn == nil {
-		return errors.New("not connected")
-	}
-
-	data, err := protocol.MarshalData(protocol.SendMessage{
+	return c.writePacket(protocol.SEND_MESSAGE, protocol.SendMessage{
 		ToUsername: toUsername,
 		Body:       body,
 	})
-	if err != nil {
-		return err
-	}
-	return protocol.Write(conn, protocol.Packet{Type: protocol.SEND_MESSAGE, Data: data})
+}
+
+func (c *ChatClient) SendFriendRequest(toUsername string) error {
+	return c.writePacket(protocol.FRIEND_REQUEST, protocol.FriendRequest{ToUsername: toUsername})
+}
+
+func (c *ChatClient) AcceptFriendRequest(fromUsername string) error {
+	return c.writePacket(protocol.ACCEPT_FRIEND_REQUEST, protocol.AcceptFriendRequest{FromUsername: fromUsername})
 }
 
 func (c *ChatClient) Events() <-chan ChatEvent {
@@ -133,6 +137,21 @@ func (c *ChatClient) Close() error {
 	err := c.conn.Close()
 	c.conn = nil
 	return err
+}
+
+func (c *ChatClient) writePacket(code protocol.Code, payload any) error {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+	if conn == nil {
+		return errors.New("not connected")
+	}
+
+	data, err := protocol.MarshalData(payload)
+	if err != nil {
+		return err
+	}
+	return protocol.Write(conn, protocol.Packet{Type: code, Data: data})
 }
 
 func (c *ChatClient) readLoop() {
@@ -162,27 +181,38 @@ func (c *ChatClient) readLoop() {
 			if err := protocol.UnmarshalData(pkt.Data, &msg); err != nil {
 				continue
 			}
-			select {
-			case c.events <- ChatEvent{
+			c.pushEvent(ChatEvent{
 				Kind: EventMessage,
 				Message: Message{
 					From: msg.FromUsername,
 					Body: msg.Body,
 				},
-			}:
-			case <-c.done:
-				return
-			}
+			})
 		case protocol.CONTACTS_RESPONSE:
 			var contacts protocol.ContactsResponse
 			if err := protocol.UnmarshalData(pkt.Data, &contacts); err != nil {
 				continue
 			}
-			select {
-			case c.events <- ChatEvent{Kind: EventContacts, Contacts: contacts.Usernames}:
-			case <-c.done:
-				return
+			c.pushEvent(ChatEvent{
+				Kind: EventContacts,
+				Contacts: Contacts{
+					Friends:         contacts.Friends,
+					PendingRequests: contacts.PendingRequests,
+				},
+			})
+		case protocol.FRIEND_REQUEST_RECEIVED:
+			var req protocol.FriendRequestReceived
+			if err := protocol.UnmarshalData(pkt.Data, &req); err != nil {
+				continue
 			}
+			c.pushEvent(ChatEvent{Kind: EventFriendRequest, From: req.FromUsername})
 		}
+	}
+}
+
+func (c *ChatClient) pushEvent(event ChatEvent) {
+	select {
+	case c.events <- event:
+	case <-c.done:
 	}
 }

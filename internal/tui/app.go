@@ -82,7 +82,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, waitForChatEvent(m.chatConn)
 		case client.EventContacts:
 			if m.screen == screenChat {
-				m.chat, _ = m.chat.Update(contactsUpdatedMsg{contacts: msg.Contacts})
+				m.chat, _ = m.chat.Update(contactsUpdatedMsg{
+					friends: msg.Contacts.Friends,
+					pending: msg.Contacts.PendingRequests,
+				})
+			}
+			return m, waitForChatEvent(m.chatConn)
+		case client.EventFriendRequest:
+			if m.screen == screenChat {
+				m.chat, _ = m.chat.Update(friendRequestMsg{from: msg.From})
 			}
 			return m, waitForChatEvent(m.chatConn)
 		}

@@ -174,10 +174,14 @@ func (s *Store) MarkMessageDelivered(ctx context.Context, messageID int64) error
 	return err
 }
 
-func (s *Store) ListUsernames(ctx context.Context, excludeUserID int64) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT username FROM users WHERE user_id != ? ORDER BY username ASC`,
-		excludeUserID,
+func (s *Store) ListFriends(ctx context.Context, userID int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT u.username
+		FROM friends f
+		JOIN users u ON f.friend_user_id = u.user_id
+		WHERE f.user_id = ?
+		ORDER BY u.username ASC`,
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -193,6 +197,90 @@ func (s *Store) ListUsernames(ctx context.Context, excludeUserID int64) ([]strin
 		names = append(names, name)
 	}
 	return names, rows.Err()
+}
+
+func (s *Store) ListIncomingFriendRequests(ctx context.Context, userID int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT u.username
+		FROM friend_requests fr
+		JOIN users u ON fr.from_user_id = u.user_id
+		WHERE fr.to_user_id = ?
+		ORDER BY fr.created_at ASC`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
+func (s *Store) CreateFriendRequest(ctx context.Context, fromUserID, toUserID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO friend_requests(from_user_id, to_user_id, created_at) VALUES (?, ?, ?)`,
+		fromUserID, toUserID, time.Now().Unix(),
+	)
+	return err
+}
+
+func (s *Store) AcceptFriendRequest(ctx context.Context, userID, fromUserID int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx,
+		`DELETE FROM friend_requests WHERE from_user_id = ? AND to_user_id = ?`,
+		fromUserID, userID,
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	now := time.Now().Unix()
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO friends(user_id, friend_user_id, created_at) VALUES (?, ?, ?)`,
+		userID, fromUserID, now,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO friends(user_id, friend_user_id, created_at) VALUES (?, ?, ?)`,
+		fromUserID, userID, now,
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (s *Store) AreFriends(ctx context.Context, userID, otherUserID int64) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM friends WHERE user_id = ? AND friend_user_id = ?`,
+		userID, otherUserID,
+	).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (s *Store) Close() error {

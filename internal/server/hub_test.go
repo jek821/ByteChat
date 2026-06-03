@@ -12,6 +12,15 @@ import (
 	"ByteChat/internal/store/sqlite"
 )
 
+func mustHashToken(t *testing.T, token string) []byte {
+	t.Helper()
+	hash, err := service.HashSessionToken(token)
+	if err != nil {
+		t.Fatalf("HashSessionToken: %v", err)
+	}
+	return hash
+}
+
 func TestHubDeliverMessage(t *testing.T) {
 	ctx := context.Background()
 	store, err := sqlite.New(filepath.Join(t.TempDir(), "test.db"))
@@ -39,6 +48,21 @@ func TestHubDeliverMessage(t *testing.T) {
 	bob, err := auth.Login(ctx, "bob", "password123")
 	if err != nil {
 		t.Fatalf("login bob: %v", err)
+	}
+
+	aliceID, _, err := store.GetUserByTokenHash(ctx, mustHashToken(t, alice.Token))
+	if err != nil {
+		t.Fatalf("alice id: %v", err)
+	}
+	bobID, _, err := store.GetUserByTokenHash(ctx, mustHashToken(t, bob.Token))
+	if err != nil {
+		t.Fatalf("bob id: %v", err)
+	}
+	if err := store.CreateFriendRequest(ctx, aliceID, bobID); err != nil {
+		t.Fatalf("CreateFriendRequest: %v", err)
+	}
+	if err := store.AcceptFriendRequest(ctx, bobID, aliceID); err != nil {
+		t.Fatalf("AcceptFriendRequest: %v", err)
 	}
 
 	tlsConfig, err := LoadTLSConfig()

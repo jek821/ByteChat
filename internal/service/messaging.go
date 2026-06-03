@@ -9,10 +9,10 @@ import (
 )
 
 var (
-	ErrInvalidToken   = errors.New("invalid session token")
-	ErrUserNotFound   = errors.New("user not found")
-	ErrEmptyMessage   = errors.New("message body is required")
-	ErrSelfMessage    = errors.New("cannot message yourself")
+	ErrInvalidToken = errors.New("invalid session token")
+	ErrUserNotFound = errors.New("user not found")
+	ErrEmptyMessage = errors.New("message body is required")
+	ErrSelfMessage  = errors.New("cannot message yourself")
 )
 
 type MessageService struct {
@@ -42,10 +42,6 @@ func (s *MessageService) AuthenticateToken(ctx context.Context, token string) (u
 		return 0, "", err
 	}
 	return userID, username, nil
-}
-
-func (s *MessageService) ListContacts(ctx context.Context, userID int64) ([]string, error) {
-	return s.store.ListUsernames(ctx, userID)
 }
 
 func (s *MessageService) PendingMessages(ctx context.Context, userID int64) ([]OutboundMessage, error) {
@@ -82,6 +78,14 @@ func (s *MessageService) Send(ctx context.Context, fromUserID int64, toUsername,
 	}
 	if toUserID == fromUserID {
 		return 0, 0, ErrSelfMessage
+	}
+
+	friends, err := s.store.AreFriends(ctx, fromUserID, toUserID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if !friends {
+		return 0, 0, ErrNotFriends
 	}
 
 	msgID, err = s.store.SaveMessage(ctx, fromUserID, toUserID, body)

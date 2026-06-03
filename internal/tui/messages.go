@@ -33,7 +33,12 @@ type incomingMessageMsg struct {
 }
 
 type contactsUpdatedMsg struct {
-	contacts []string
+	friends []string
+	pending []string
+}
+
+type friendRequestMsg struct {
+	from string
 }
 
 type chatDisconnectedMsg struct{}

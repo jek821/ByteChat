@@ -41,11 +41,17 @@ func TestMessageServiceSendAndPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("alice token: %v", err)
 	}
-	bobID, bobName, err := db.GetUserByTokenHash(ctx, mustHashToken(t, bobLogin.Token))
+	bobID, _, err := db.GetUserByTokenHash(ctx, mustHashToken(t, bobLogin.Token))
 	if err != nil {
 		t.Fatalf("bob token: %v", err)
 	}
-	_ = bobName
+
+	if err := db.CreateFriendRequest(ctx, aliceID, bobID); err != nil {
+		t.Fatalf("CreateFriendRequest: %v", err)
+	}
+	if err := db.AcceptFriendRequest(ctx, bobID, aliceID); err != nil {
+		t.Fatalf("AcceptFriendRequest: %v", err)
+	}
 
 	msgID, toID, err := messages.Send(ctx, aliceID, "bob", "hello bob")
 	if err != nil {
