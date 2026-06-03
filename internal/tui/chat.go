@@ -51,7 +51,7 @@ func newChatModel(username string, messenger messenger) chatModel {
 }
 
 func (m chatModel) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, tea.WindowSize())
 }
 
 func (m chatModel) Update(msg tea.Msg) (chatModel, tea.Cmd) {

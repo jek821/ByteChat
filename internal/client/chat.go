@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 
 	"ByteChat/internal/protocol"
 )
@@ -49,7 +50,8 @@ func NewChatClient(addr string) *ChatClient {
 }
 
 func (c *ChatClient) Connect(token string) error {
-	conn, err := tls.Dial("tcp", c.addr, c.tlsConfig)
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	conn, err := tls.DialWithDialer(dialer, "tcp", c.addr, c.tlsConfig)
 	if err != nil {
 		return err
 	}

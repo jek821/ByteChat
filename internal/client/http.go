@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"ByteChat/internal/paths"
 	"ByteChat/internal/service"
@@ -25,6 +26,7 @@ func NewHTTPAuth(baseURL string) *HTTPAuth {
 	return &HTTPAuth{
 		baseURL: baseURL,
 		client: &http.Client{
+			Timeout: 15 * time.Second,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					MinVersion:         tls.VersionTLS12,

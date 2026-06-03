@@ -11,6 +11,8 @@ import (
 type Model struct {
 	cfg      Config
 	screen   screen
+	width    int
+	height   int
 	welcome  welcomeModel
 	login    loginModel
 	register registerModel
@@ -29,10 +31,15 @@ func New(cfg Config) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return m.welcome.Init()
+	return tea.Batch(m.welcome.Init(), tea.WindowSize())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if sz, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = sz.Width
+		m.height = sz.Height
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" && m.screen == screenWelcome {
@@ -52,10 +59,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case loginSuccessMsg:
-		return m.connectChat(msg.creds)
+		return m.connectChat(msg.creds, screenLogin)
 
 	case registerSuccessMsg:
-		return m.connectChat(msg.creds)
+		return m.connectChat(msg.creds, screenRegister)
 
 	case chatDisconnectedMsg:
 		if m.chatConn != nil {
@@ -95,17 +102,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) connectChat(creds client.Credentials) (Model, tea.Cmd) {
+func (m Model) connectChat(creds client.Credentials, from screen) (Model, tea.Cmd) {
 	chatConn := client.NewChatClient(m.cfg.TCPAddr)
 	if err := chatConn.Connect(creds.Token); err != nil {
-		m.login = newLoginModel(m.cfg.Auth)
-		m.login.err = err
-		m.screen = screenLogin
-		return m, m.login.Init()
+		switch from {
+		case screenRegister:
+			m.register = newRegisterModel(m.cfg.Auth)
+			m.register.err = err
+			m.screen = screenRegister
+			return m, m.register.Init()
+		default:
+			m.login = newLoginModel(m.cfg.Auth)
+			m.login.err = err
+			m.screen = screenLogin
+			return m, m.login.Init()
+		}
 	}
 
 	m.chatConn = chatConn
 	m.chat = newChatModel(creds.Username, chatConn)
+	if m.width > 0 && m.height > 0 {
+		m.chat, _ = m.chat.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+	}
 	m.screen = screenChat
 	return m, tea.Batch(m.chat.Init(), waitForChatEvent(chatConn))
 }
