@@ -2,6 +2,8 @@ package sqlite
 
 import (
 	"database/sql"
+
+	"ByteChat/internal/logx"
 )
 
 type migration struct {
@@ -57,6 +59,12 @@ var migrations = []migration{
 			)`,
 		},
 	},
+	{
+		version: 5,
+		stmts: []string{
+			"ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
+		},
+	},
 }
 
 func migrate(db *sql.DB) error {
@@ -99,5 +107,6 @@ func applyMigration(db *sql.DB, m migration) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	logx.MigrationApplied(m.version)
 	return nil
 }

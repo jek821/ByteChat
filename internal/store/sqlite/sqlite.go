@@ -6,6 +6,7 @@ import (
 	_ "modernc.org/sqlite"
 	"time"
 
+	"ByteChat/internal/logx"
 	"ByteChat/internal/store"
 )
 
@@ -81,6 +82,7 @@ func (s *Store) CreateUser(ctx context.Context, username string, passwordHash []
 	if err != nil {
 		return 0, err
 	}
+	logx.UserCreated(userId, username)
 	return userId, nil
 }
 
@@ -138,7 +140,12 @@ func (s *Store) SaveMessage(ctx context.Context, fromUserID, toUserID int64, bod
 	if err != nil {
 		return 0, err
 	}
-	return result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	logx.MessageStored(id, fromUserID, toUserID)
+	return id, nil
 }
 
 func (s *Store) ListUndeliveredMessages(ctx context.Context, userID int64) ([]store.StoredMessage, error) {
@@ -336,6 +343,127 @@ func (s *Store) AreFriends(ctx context.Context, userID, otherUserID int64) (bool
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func (s *Store) IsAdmin(ctx context.Context, userID int64) (bool, error) {
+	var isAdmin int
+	err := s.db.QueryRowContext(ctx, `SELECT is_admin FROM users WHERE user_id = ?`, userID).Scan(&isAdmin)
+	if err != nil {
+		return false, err
+	}
+	return isAdmin != 0, nil
+}
+
+func (s *Store) SetAdmin(ctx context.Context, userID int64, admin bool) error {
+	val := 0
+	if admin {
+		val = 1
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET is_admin = ? WHERE user_id = ?`, val, userID)
+	if err != nil {
+		return err
+	}
+	logx.AdminFlagSet(userID, admin)
+	return nil
+}
+
+func (s *Store) HasAdmin(ctx context.Context) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM users WHERE is_admin = 1`).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (s *Store) ListUsers(ctx context.Context) ([]store.UserSummary, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT user_id, username, created_at, is_admin FROM users ORDER BY username ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []store.UserSummary
+	for rows.Next() {
+		var u store.UserSummary
+		var isAdmin int
+		if err := rows.Scan(&u.ID, &u.Username, &u.CreatedAt, &isAdmin); err != nil {
+			return nil, err
+		}
+		u.IsAdmin = isAdmin != 0
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (s *Store) DeleteUser(ctx context.Context, userID int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmts := []struct {
+		query string
+		args  []any
+	}{
+		{`DELETE FROM messages WHERE from_user_id = ? OR to_user_id = ?`, []any{userID, userID}},
+		{`DELETE FROM sessions WHERE user_id = ?`, []any{userID}},
+		{`DELETE FROM friend_requests WHERE from_user_id = ? OR to_user_id = ?`, []any{userID, userID}},
+		{`DELETE FROM friends WHERE user_id = ? OR friend_user_id = ?`, []any{userID, userID}},
+		{`DELETE FROM users WHERE user_id = ?`, []any{userID}},
+	}
+	for _, stmt := range stmts {
+		if _, err := tx.ExecContext(ctx, stmt.query, stmt.args...); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	logx.UserDeleted(userID)
+	return nil
+}
+
+func (s *Store) WipeAllData(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	tables := []string{"messages", "friend_requests", "friends", "sessions", "users"}
+	for _, table := range tables {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	logx.DatabaseWiped()
+	return nil
+}
+
+func (s *Store) GetServerStats(ctx context.Context) (store.ServerStats, error) {
+	var stats store.ServerStats
+	queries := []struct {
+		sql  string
+		dest *int
+	}{
+		{`SELECT COUNT(1) FROM users`, &stats.UserCount},
+		{`SELECT COUNT(1) FROM messages`, &stats.MessageCount},
+		{`SELECT COUNT(1) FROM sessions WHERE revoked_at IS NULL`, &stats.SessionCount},
+		{`SELECT COUNT(1) FROM friends`, &stats.FriendCount},
+		{`SELECT COUNT(1) FROM friend_requests`, &stats.RequestCount},
+	}
+	for _, q := range queries {
+		if err := s.db.QueryRowContext(ctx, q.sql).Scan(q.dest); err != nil {
+			return stats, err
+		}
+	}
+	return stats, nil
 }
 
 func (s *Store) Close() error {

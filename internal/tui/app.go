@@ -9,15 +9,17 @@ import (
 )
 
 type Model struct {
-	cfg      Config
-	screen   screen
-	width    int
-	height   int
-	welcome  welcomeModel
-	login    loginModel
-	register registerModel
-	chat     chatModel
-	chatConn *client.ChatClient
+	cfg        Config
+	screen     screen
+	width      int
+	height     int
+	welcome    welcomeModel
+	login      loginModel
+	register   registerModel
+	chat       chatModel
+	adminLogin adminLoginModel
+	adminPanel adminPanelModel
+	chatConn   *client.ChatClient
 }
 
 func New(cfg Config) Model {
@@ -55,8 +57,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenRegister:
 			m.register = newRegisterModel(m.cfg.Auth)
 			return m, m.register.Init()
+		case screenAdminLogin:
+			if m.cfg.Admin == nil {
+				m.screen = screenWelcome
+				return m, nil
+			}
+			m.adminLogin = newAdminLoginModel(m.cfg.Admin)
+			return m, m.adminLogin.Init()
 		}
 		return m, nil
+
+	case adminLoginSuccessMsg:
+		m.adminPanel = newAdminPanelModel(m.cfg.Admin, msg.creds.Username)
+		m.screen = screenAdminPanel
+		if m.width > 0 && m.height > 0 {
+			m.adminPanel, _ = m.adminPanel.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+		}
+		return m, m.adminPanel.Init()
 
 	case loginSuccessMsg:
 		return m.connectChat(msg.creds, screenLogin)
@@ -120,6 +137,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.register, cmd = m.register.Update(msg)
 	case screenChat:
 		m.chat, cmd = m.chat.Update(msg)
+	case screenAdminLogin:
+		m.adminLogin, cmd = m.adminLogin.Update(msg)
+	case screenAdminPanel:
+		m.adminPanel, cmd = m.adminPanel.Update(msg)
 	}
 	return m, cmd
 }
@@ -177,6 +198,10 @@ func (m Model) View() string {
 		return m.register.View() + "\n" + authHUD(w)
 	case screenChat:
 		return m.chat.View()
+	case screenAdminLogin:
+		return m.adminLogin.View() + "\n" + authHUD(w)
+	case screenAdminPanel:
+		return m.adminPanel.View()
 	default:
 		return ""
 	}

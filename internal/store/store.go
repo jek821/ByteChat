@@ -9,6 +9,21 @@ type StoredMessage struct {
 	CreatedAt    int64
 }
 
+type UserSummary struct {
+	ID        int64
+	Username  string
+	CreatedAt int64
+	IsAdmin   bool
+}
+
+type ServerStats struct {
+	UserCount    int
+	MessageCount int
+	SessionCount int
+	FriendCount  int
+	RequestCount int
+}
+
 type Store interface {
 	Close() error
 
@@ -32,4 +47,12 @@ type Store interface {
 	SetE2EKeyBundle(ctx context.Context, userID int64, pubKey, encPrivKey, salt []byte) error
 	GetE2EPublicKey(ctx context.Context, username string) ([]byte, error)
 	GetE2EKeyBundle(ctx context.Context, userID int64) (encPrivKey, salt []byte, err error)
+
+	IsAdmin(ctx context.Context, userID int64) (bool, error)
+	SetAdmin(ctx context.Context, userID int64, admin bool) error
+	ListUsers(ctx context.Context) ([]UserSummary, error)
+	DeleteUser(ctx context.Context, userID int64) error
+	WipeAllData(ctx context.Context) error
+	GetServerStats(ctx context.Context) (ServerStats, error)
+	HasAdmin(ctx context.Context) (bool, error)
 }

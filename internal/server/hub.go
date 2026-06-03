@@ -3,10 +3,10 @@ package server
 import (
 	"context"
 	"errors"
-	"log"
 	"net"
 	"sync"
 
+	"ByteChat/internal/logx"
 	"ByteChat/internal/protocol"
 	"ByteChat/internal/service"
 )
@@ -47,21 +47,35 @@ func (h *Hub) clientForUser(userID int64) *clientConn {
 	return h.clients[userID]
 }
 
+func (h *Hub) OnlineUsernames() []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	names := make([]string, 0, len(h.clients))
+	for _, c := range h.clients {
+		names = append(names, c.username)
+	}
+	return names
+}
+
 func (h *Hub) handleConn(raw net.Conn) {
 	conn := newClientConn(raw, h)
 	defer conn.close()
 
 	ctx := context.Background()
 	if err := conn.authenticate(ctx); err != nil {
-		log.Printf("tcp auth failed: %v", err)
+		logx.Warn(logx.CatTCP, "connection authentication failed")
 		return
 	}
 
 	h.register(conn)
-	defer h.unregister(conn.userID, conn)
+	logx.TCPConnected(conn.username)
+	defer func() {
+		logx.TCPDisconnected(conn.username)
+		h.unregister(conn.userID, conn)
+	}()
 
 	if err := conn.sendBootstrap(ctx); err != nil {
-		log.Printf("tcp bootstrap failed for %s: %v", conn.username, err)
+		logx.Warn(logx.CatTCP, "bootstrap failed username=%s err=%v", conn.username, err)
 		return
 	}
 
@@ -71,7 +85,7 @@ func (h *Hub) handleConn(raw net.Conn) {
 			return
 		}
 		if err := h.handlePacket(ctx, conn, pkt); err != nil {
-			log.Printf("tcp handler error for %s: %v", conn.username, err)
+			logx.Warn(logx.CatTCP, "handler error username=%s err=%v", conn.username, err)
 		}
 	}
 }
@@ -115,6 +129,7 @@ func (h *Hub) deliver(ctx context.Context, sender *clientConn, msg protocol.Send
 
 	recipient := h.clientForUser(toUserID)
 	if recipient == nil {
+		logx.MessageSent(sender.username, msg.ToUsername, msgID)
 		return nil
 	}
 
@@ -126,7 +141,12 @@ func (h *Hub) deliver(ctx context.Context, sender *clientConn, msg protocol.Send
 	if err := recipient.writePacket(protocol.RECEIVE_MESSSAGE, out); err != nil {
 		return err
 	}
-	return h.messages.MarkDelivered(ctx, msgID)
+	logx.MessageSent(sender.username, msg.ToUsername, msgID)
+	if err := h.messages.MarkDelivered(ctx, msgID); err != nil {
+		return err
+	}
+	logx.MessageDelivered(msgID, msg.ToUsername)
+	return nil
 }
 
 func (h *Hub) handleFriendRequest(ctx context.Context, sender *clientConn, req protocol.FriendRequest) error {
@@ -136,6 +156,7 @@ func (h *Hub) handleFriendRequest(ctx context.Context, sender *clientConn, req p
 	}
 
 	h.refreshContacts(ctx, sender.userID)
+	logx.FriendRequest(sender.username, req.ToUsername)
 
 	recipient := h.clientForUser(toUserID)
 	if recipient == nil {
@@ -172,6 +193,7 @@ func (h *Hub) handleAcceptFriendRequest(ctx context.Context, accepter *clientCon
 	if err != nil {
 		return err
 	}
+	logx.FriendAccepted(accepter.username, req.FromUsername)
 
 	h.refreshContacts(ctx, accepter.userID)
 	h.refreshContacts(ctx, fromUserID)
@@ -184,7 +206,7 @@ func (h *Hub) refreshContacts(ctx context.Context, userID int64) {
 		return
 	}
 	if err := client.sendContacts(ctx); err != nil {
-		log.Printf("refresh contacts for user %d: %v", userID, err)
+		logx.Warn(logx.CatTCP, "refresh contacts failed user_id=%d err=%v", userID, err)
 	}
 }
 

@@ -15,11 +15,14 @@ type AuthHandler interface {
 	Login(ctx context.Context, username, password string) (service.AuthResult, error)
 }
 
-func New(auth AuthHandler) http.Handler {
+func New(auth AuthHandler, admin AdminHandler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/register", registerHandler(auth))
 	mux.HandleFunc("POST /api/login", loginHandler(auth))
-	return mux
+	if admin != nil {
+		registerAdminRoutes(mux, admin)
+	}
+	return loggingMiddleware(mux)
 }
 
 type authRequest struct {

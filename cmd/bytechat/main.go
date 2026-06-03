@@ -16,6 +16,7 @@ func main() {
 
 	cfg := tui.Config{
 		Auth:    client.NewHTTPAuth(*serverURL),
+		Admin:   client.NewAdminClient(*serverURL),
 		TCPAddr: *tcpAddr,
 	}
 	if err := tui.Run(cfg); err != nil {

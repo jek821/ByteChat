@@ -130,6 +130,21 @@ func (s *AuthService) issueSession(ctx context.Context, userID int64) (string, e
 	return token, nil
 }
 
+func (s *AuthService) SessionUser(ctx context.Context, token string) (userID int64, username string, err error) {
+	tokenHash, err := HashSessionToken(token)
+	if err != nil {
+		return 0, "", ErrInvalidToken
+	}
+	userID, username, err = s.store.GetUserByTokenHash(ctx, tokenHash)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, "", ErrInvalidToken
+		}
+		return 0, "", err
+	}
+	return userID, username, nil
+}
+
 func hashPassword(password string) ([]byte, error) {
 	salt := make([]byte, passwordSaltLen)
 	if _, err := rand.Read(salt); err != nil {

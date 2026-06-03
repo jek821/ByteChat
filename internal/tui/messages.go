@@ -1,6 +1,10 @@
 package tui
 
-import "ByteChat/internal/client"
+import (
+	"ByteChat/internal/client"
+	"ByteChat/internal/service"
+	"ByteChat/internal/store"
+)
 
 type screen int
 
@@ -9,6 +13,8 @@ const (
 	screenLogin
 	screenRegister
 	screenChat
+	screenAdminLogin
+	screenAdminPanel
 )
 
 type navigateMsg struct {
@@ -58,3 +64,19 @@ type modalResultMsg struct {
 }
 
 type chatDisconnectedMsg struct{}
+
+type adminLoginSuccessMsg struct {
+	creds client.Credentials
+}
+
+type adminDataMsg struct {
+	dash  service.AdminDashboard
+	users []store.UserSummary
+	err   error
+}
+
+type adminActionMsg struct {
+	status  string
+	err     error
+	refresh bool
+}

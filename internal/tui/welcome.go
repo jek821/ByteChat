@@ -23,6 +23,8 @@ func (m welcomeModel) Update(msg tea.Msg) (welcomeModel, tea.Cmd) {
 			return m, func() tea.Msg { return navigateMsg{to: screenLogin} }
 		case "r":
 			return m, func() tea.Msg { return navigateMsg{to: screenRegister} }
+		case "~":
+			return m, func() tea.Msg { return navigateMsg{to: screenAdminLogin} }
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		}

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"ByteChat/internal/logx"
 	"ByteChat/internal/service"
 	"ByteChat/internal/store/sqlite"
 )
@@ -22,7 +23,8 @@ func TestRegisterAndLoginHTTP(t *testing.T) {
 	t.Cleanup(func() { store.Close() })
 
 	auth := service.NewAuthService(store)
-	srv := httptest.NewServer(New(auth))
+	admin := service.NewAdminService(store, auth, nil)
+	srv := httptest.NewServer(New(auth, admin))
 	t.Cleanup(srv.Close)
 
 	registerBody := map[string]string{
@@ -49,6 +51,59 @@ func TestRegisterAndLoginHTTP(t *testing.T) {
 	_, err = auth.Login(ctx, "alice", "wrong")
 	if err == nil {
 		t.Fatal("expected login failure for sanity check")
+	}
+}
+
+func TestAdminLoginAndManageUsers(t *testing.T) {
+	_ = logx.Init()
+	ctx := context.Background()
+	store, err := sqlite.New(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("sqlite.New: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	auth := service.NewAuthService(store)
+	admin := service.NewAdminService(store, auth, nil)
+	if err := admin.CreateAdmin(ctx, "admin", "adminpass123"); err != nil {
+		t.Fatalf("CreateAdmin: %v", err)
+	}
+	if _, err := auth.Register(ctx, service.RegisterInput{Username: "bob", Password: "bobpass123"}); err != nil {
+		t.Fatalf("register bob: %v", err)
+	}
+
+	srv := httptest.NewServer(New(auth, admin))
+	t.Cleanup(srv.Close)
+
+	loginResp := postJSON(t, srv.URL+"/api/admin/login", map[string]string{
+		"username": "admin",
+		"password": "adminpass123",
+	})
+	token := loginResp["token"]
+	if token == "" {
+		t.Fatal("expected admin token")
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/admin/users", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("list users: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("list users status: %d", res.StatusCode)
+	}
+
+	delReq, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/admin/users/bob", nil)
+	delReq.Header.Set("Authorization", "Bearer "+token)
+	delRes, err := http.DefaultClient.Do(delReq)
+	if err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+	delRes.Body.Close()
+	if delRes.StatusCode != http.StatusOK {
+		t.Fatalf("delete user status: %d", delRes.StatusCode)
 	}
 }
 

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
+	"strings"
 
+	"ByteChat/internal/logx"
 	"ByteChat/internal/paths"
 	"ByteChat/internal/router"
 	"ByteChat/internal/server"
@@ -15,7 +18,12 @@ import (
 func main() {
 	httpsAddr := flag.String("https-addr", ":8443", "HTTPS listen address")
 	tcpAddr := flag.String("tcp-addr", ":8444", "TCP+TLS listen address")
+	createAdmin := flag.String("create-admin", "", "create or promote admin user (format: username:password)")
 	flag.Parse()
+
+	if err := logx.Init(); err != nil {
+		log.Fatalf("log config: %v", err)
+	}
 
 	dbPath, err := paths.DBPath()
 	if err != nil {
@@ -31,6 +39,19 @@ func main() {
 	auth := service.NewAuthService(store)
 	messages := service.NewMessageService(store)
 	hub := server.NewHub(messages)
+	admin := service.NewAdminService(store, auth, hub)
+
+	if *createAdmin != "" {
+		username, password, ok := strings.Cut(*createAdmin, ":")
+		if !ok || username == "" || password == "" {
+			log.Fatal("create-admin format must be username:password")
+		}
+		if err := admin.CreateAdmin(context.Background(), username, password); err != nil {
+			log.Fatalf("create admin: %v", err)
+		}
+		logx.AdminAction("bootstrap", "admin user ready username="+username)
+		log.Printf("admin user %q is ready", username)
+	}
 
 	tlsConfig, err := server.LoadTLSConfig()
 	if err != nil {
@@ -49,10 +70,10 @@ func main() {
 
 	srv := &http.Server{
 		Addr:      *httpsAddr,
-		Handler:   router.New(auth),
+		Handler:   router.New(auth, admin),
 		TLSConfig: tlsConfig,
 	}
 
-	log.Printf("byteChat HTTPS server listening on https://localhost%s", *httpsAddr)
+	logx.Info(logx.CatServer, "HTTPS listening on https://localhost%s", *httpsAddr)
 	log.Fatal(srv.ListenAndServeTLS(certPath, keyPath))
 }

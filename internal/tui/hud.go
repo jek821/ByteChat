@@ -58,9 +58,34 @@ func welcomeHUD(width int) string {
 	return renderHUD(width,
 		hudBinding{"l", "login"},
 		hudBinding{"r", "register"},
+		hudBinding{"~", "admin"},
 		hudBinding{"q", "quit"},
 		hudBinding{"ctrl+c", "quit"},
 	)
+}
+
+func adminHUD(width int, m adminPanelModel) string {
+	common := []hudBinding{
+		{"1", "dashboard"},
+		{"2", "users"},
+		{"3", "logs"},
+		{"4", "wipe"},
+		{"r", "refresh"},
+		{"esc", "back"},
+	}
+	switch m.tab {
+	case adminTabUsers:
+		if m.pendingDelete != "" {
+			common = append(common, hudBinding{"d", "confirm delete"}, hudBinding{"esc", "cancel"})
+		} else {
+			common = append(common, hudBinding{"↑↓", "select"}, hudBinding{"d", "delete"})
+		}
+	case adminTabLogs:
+		common = append(common, hudBinding{"↑↓", "select"}, hudBinding{"space", "toggle"})
+	case adminTabWipe:
+		common = append(common, hudBinding{"enter", "confirm wipe"})
+	}
+	return renderHUD(width, common...)
 }
 
 func authHUD(width int) string {

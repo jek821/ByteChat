@@ -2,7 +2,8 @@ package server
 
 import (
 	"crypto/tls"
-	"log"
+
+	"ByteChat/internal/logx"
 )
 
 func ListenTCP(addr string, tlsConfig *tls.Config, hub *Hub) error {
@@ -10,7 +11,7 @@ func ListenTCP(addr string, tlsConfig *tls.Config, hub *Hub) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("byteChat TCP+TLS server listening on %s", addr)
+	logx.Info(logx.CatServer, "TCP+TLS listening on %s", addr)
 
 	for {
 		conn, err := ln.Accept()
