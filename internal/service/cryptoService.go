@@ -5,68 +5,13 @@ import (
 	"crypto/cipher"
 	"crypto/ecdh"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
-	"math/big"
 	"os"
-	"time"
 
 	"ByteChat/internal/paths"
 	"golang.org/x/crypto/argon2"
 )
-
-func generateServerAuth() error {
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{Organization: []string{"My App"}},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(1, 0, 0),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost"},
-	}
-
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return err
-	}
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return err
-	}
-
-	certPath, err := paths.CertPath()
-	if err != nil {
-		return err
-	}
-	certOut, err := os.Create(certPath)
-	if err != nil {
-		return err
-	}
-	defer certOut.Close()
-	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-		return err
-	}
-
-	keyPath, err := paths.KeyPath()
-	if err != nil {
-		return err
-	}
-	keyOut, err := os.Create(keyPath)
-	if err != nil {
-		return err
-	}
-	defer keyOut.Close()
-	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)}); err != nil {
-		return err
-	}
-
-	return nil
-}
 
 // GenerateE2EKeypair generates a new X25519 keypair for E2E encryption.
 // Returns raw public and private key bytes.

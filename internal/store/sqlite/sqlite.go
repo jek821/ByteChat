@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	_ "modernc.org/sqlite"
 	"time"
+
+	"ByteChat/internal/store"
 )
 
 type Store struct {
@@ -41,6 +43,26 @@ func New(path string) (*Store, error) {
 	}
 
 	return &Store{db: newDb}, nil
+}
+
+func (s *Store) GetUserByUsername(ctx context.Context, username string) (int64, []byte, error) {
+	var userID int64
+	var passwordHash []byte
+	err := s.db.QueryRowContext(ctx,
+		`SELECT user_id, password_hash FROM users WHERE username = ?`, username,
+	).Scan(&userID, &passwordHash)
+	if err != nil {
+		return 0, nil, err
+	}
+	return userID, passwordHash, nil
+}
+
+func (s *Store) CreateSession(ctx context.Context, userID int64, tokenHash []byte) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO sessions(user_id, token_hash, created_at) VALUES (?, ?, ?)`,
+		userID, tokenHash, time.Now().Unix(),
+	)
+	return err
 }
 
 func (s *Store) CreateUser(ctx context.Context, username string, passwordHash []byte) (int64, error) {
@@ -90,6 +112,87 @@ func (s *Store) GetE2EKeyBundle(ctx context.Context, userID int64) (encPrivKey, 
 		`SELECT e2e_encrypted_private_key, e2e_key_salt FROM users WHERE user_id = ?`, userID,
 	).Scan(&encPrivKey, &salt)
 	return
+}
+
+func (s *Store) GetUserByTokenHash(ctx context.Context, tokenHash []byte) (int64, string, error) {
+	var userID int64
+	var username string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT u.user_id, u.username
+		FROM sessions s
+		JOIN users u ON s.user_id = u.user_id
+		WHERE s.token_hash = ? AND s.revoked_at IS NULL`,
+		tokenHash,
+	).Scan(&userID, &username)
+	if err != nil {
+		return 0, "", err
+	}
+	return userID, username, nil
+}
+
+func (s *Store) SaveMessage(ctx context.Context, fromUserID, toUserID int64, body string) (int64, error) {
+	result, err := s.db.ExecContext(ctx,
+		`INSERT INTO messages(from_user_id, to_user_id, body, created_at) VALUES (?, ?, ?, ?)`,
+		fromUserID, toUserID, body, time.Now().Unix(),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (s *Store) ListUndeliveredMessages(ctx context.Context, userID int64) ([]store.StoredMessage, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.message_id, u.username, m.body
+		FROM messages m
+		JOIN users u ON m.from_user_id = u.user_id
+		WHERE m.to_user_id = ? AND m.delivered_at IS NULL
+		ORDER BY m.created_at ASC`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []store.StoredMessage
+	for rows.Next() {
+		var msg store.StoredMessage
+		if err := rows.Scan(&msg.ID, &msg.FromUsername, &msg.Body); err != nil {
+			return nil, err
+		}
+		messages = append(messages, msg)
+	}
+	return messages, rows.Err()
+}
+
+func (s *Store) MarkMessageDelivered(ctx context.Context, messageID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE messages SET delivered_at = ? WHERE message_id = ?`,
+		time.Now().Unix(), messageID,
+	)
+	return err
+}
+
+func (s *Store) ListUsernames(ctx context.Context, excludeUserID int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT username FROM users WHERE user_id != ? ORDER BY username ASC`,
+		excludeUserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
 }
 
 func (s *Store) Close() error {

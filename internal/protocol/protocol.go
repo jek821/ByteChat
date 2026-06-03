@@ -11,6 +11,7 @@ const (
 	RECEIVE_MESSSAGE
 	REQUEST_AUTH
 	AUTH_RESPONSE
+	CONTACTS_RESPONSE
 )
 
 type Packet struct {

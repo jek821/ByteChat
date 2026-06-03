@@ -6,7 +6,18 @@ import (
 	"encoding/pem"
 	"os"
 	"testing"
+
+	"ByteChat/internal/paths"
 )
+
+// setTestHomeDir redirects os.UserHomeDir() to a temp directory.
+// Tests must set both HOME and USERPROFILE because Windows uses USERPROFILE.
+func setTestHomeDir(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+}
 
 func TestGenerateE2EKeypair(t *testing.T) {
 	pub1, priv1, err := GenerateE2EKeypair()
@@ -95,7 +106,7 @@ func TestDecryptPrivateKeyTruncated(t *testing.T) {
 }
 
 func TestInitClientE2EKeysNewDevice(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHomeDir(t)
 
 	pubKey, encPrivKey, salt, uploadNeeded, err := InitClientE2EKeys("my-password")
 	if err != nil {
@@ -130,7 +141,7 @@ func TestInitClientE2EKeysNewDevice(t *testing.T) {
 }
 
 func TestInitClientE2EKeysExistingDevice(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHomeDir(t)
 
 	// First call — generates keys.
 	pubKey1, _, _, uploadNeeded1, err := InitClientE2EKeys("my-password")
@@ -158,7 +169,7 @@ func TestInitClientE2EKeysExistingDevice(t *testing.T) {
 }
 
 func TestRestoreE2EKeysFromServer(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHomeDir(t)
 
 	// Simulate what the server has stored: a real keypair, encrypted.
 	pubKey, privKey, err := GenerateE2EKeypair()
@@ -175,9 +186,14 @@ func TestRestoreE2EKeysFromServer(t *testing.T) {
 	}
 
 	// Verify private key file was written and decodes to the correct key.
-	home := os.Getenv("HOME")
-	privPath := home + "/.gochat/client/e2e_private.pem"
-	pubPath := home + "/.gochat/client/e2e_public.pem"
+	privPath, err := paths.ClientE2EPrivKeyPath()
+	if err != nil {
+		t.Fatalf("ClientE2EPrivKeyPath: %v", err)
+	}
+	pubPath, err := paths.ClientE2EPubKeyPath()
+	if err != nil {
+		t.Fatalf("ClientE2EPubKeyPath: %v", err)
+	}
 
 	privRaw, err := os.ReadFile(privPath)
 	if err != nil {
@@ -205,7 +221,7 @@ func TestRestoreE2EKeysFromServer(t *testing.T) {
 }
 
 func TestRestoreE2EKeysFromServerWrongPassword(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	setTestHomeDir(t)
 
 	_, privKey, err := GenerateE2EKeypair()
 	if err != nil {
