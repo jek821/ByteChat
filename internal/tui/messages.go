@@ -33,12 +33,28 @@ type incomingMessageMsg struct {
 }
 
 type contactsUpdatedMsg struct {
-	friends []string
-	pending []string
+	friends  []string
+	pending  []string
+	outgoing []string
 }
 
 type friendRequestMsg struct {
 	from string
+}
+
+type historyMsg struct {
+	peer     string
+	messages []chatMessage
+}
+
+type historyErrorMsg struct {
+	peer string
+	err  error
+}
+
+type modalResultMsg struct {
+	username string
+	err      error
 }
 
 type chatDisconnectedMsg struct{}

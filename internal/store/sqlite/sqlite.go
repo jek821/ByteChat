@@ -232,6 +232,61 @@ func (s *Store) CreateFriendRequest(ctx context.Context, fromUserID, toUserID in
 	return err
 }
 
+func (s *Store) ListOutgoingFriendRequests(ctx context.Context, userID int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT u.username
+		FROM friend_requests fr
+		JOIN users u ON fr.to_user_id = u.user_id
+		WHERE fr.from_user_id = ?
+		ORDER BY fr.created_at ASC`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
+func (s *Store) ListConversationMessages(ctx context.Context, userID, peerUserID int64, limit int) ([]store.StoredMessage, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.message_id, u.username, m.body, m.created_at
+		FROM messages m
+		JOIN users u ON m.from_user_id = u.user_id
+		WHERE (m.from_user_id = ? AND m.to_user_id = ?)
+		   OR (m.from_user_id = ? AND m.to_user_id = ?)
+		ORDER BY m.created_at ASC
+		LIMIT ?`,
+		userID, peerUserID, peerUserID, userID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []store.StoredMessage
+	for rows.Next() {
+		var msg store.StoredMessage
+		if err := rows.Scan(&msg.ID, &msg.FromUsername, &msg.Body, &msg.CreatedAt); err != nil {
+			return nil, err
+		}
+		messages = append(messages, msg)
+	}
+	return messages, rows.Err()
+}
+
 func (s *Store) AcceptFriendRequest(ctx context.Context, userID, fromUserID int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

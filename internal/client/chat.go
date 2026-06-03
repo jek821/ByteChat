@@ -16,6 +16,7 @@ const (
 	EventMessage ChatEventKind = iota
 	EventContacts
 	EventFriendRequest
+	EventHistory
 )
 
 type ChatEvent struct {
@@ -23,16 +24,24 @@ type ChatEvent struct {
 	Message  Message
 	Contacts Contacts
 	From     string
+	History  History
 }
 
 type Contacts struct {
-	Friends         []string
-	PendingRequests []string
+	Friends          []string
+	PendingRequests  []string
+	OutgoingRequests []string
 }
 
 type Message struct {
 	From string
 	Body string
+}
+
+type History struct {
+	Peer     string
+	Messages []Message
+	SelfUser string
 }
 
 type ChatClient struct {
@@ -42,6 +51,7 @@ type ChatClient struct {
 	events    chan ChatEvent
 	done      chan struct{}
 	mu        sync.Mutex
+	username  string
 }
 
 func NewChatClient(addr string) *ChatClient {
@@ -98,10 +108,17 @@ func (c *ChatClient) Connect(token string) error {
 
 	c.mu.Lock()
 	c.conn = conn
+	c.username = resp.Username
 	c.mu.Unlock()
 
 	go c.readLoop()
 	return nil
+}
+
+func (c *ChatClient) Username() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.username
 }
 
 func (c *ChatClient) Send(toUsername, body string) error {
@@ -117,6 +134,10 @@ func (c *ChatClient) SendFriendRequest(toUsername string) error {
 
 func (c *ChatClient) AcceptFriendRequest(fromUsername string) error {
 	return c.writePacket(protocol.ACCEPT_FRIEND_REQUEST, protocol.AcceptFriendRequest{FromUsername: fromUsername})
+}
+
+func (c *ChatClient) RequestHistory(peerUsername string) error {
+	return c.writePacket(protocol.REQUEST_HISTORY, protocol.HistoryRequest{PeerUsername: peerUsername})
 }
 
 func (c *ChatClient) Events() <-chan ChatEvent {
@@ -165,6 +186,7 @@ func (c *ChatClient) readLoop() {
 
 		c.mu.Lock()
 		conn := c.conn
+		username := c.username
 		c.mu.Unlock()
 		if conn == nil {
 			return
@@ -196,8 +218,9 @@ func (c *ChatClient) readLoop() {
 			c.pushEvent(ChatEvent{
 				Kind: EventContacts,
 				Contacts: Contacts{
-					Friends:         contacts.Friends,
-					PendingRequests: contacts.PendingRequests,
+					Friends:          contacts.Friends,
+					PendingRequests:  contacts.PendingRequests,
+					OutgoingRequests: contacts.OutgoingRequests,
 				},
 			})
 		case protocol.FRIEND_REQUEST_RECEIVED:
@@ -206,6 +229,23 @@ func (c *ChatClient) readLoop() {
 				continue
 			}
 			c.pushEvent(ChatEvent{Kind: EventFriendRequest, From: req.FromUsername})
+		case protocol.HISTORY_RESPONSE:
+			var hist protocol.HistoryResponse
+			if err := protocol.UnmarshalData(pkt.Data, &hist); err != nil {
+				continue
+			}
+			msgs := make([]Message, len(hist.Messages))
+			for i, m := range hist.Messages {
+				msgs[i] = Message{From: m.FromUsername, Body: m.Body}
+			}
+			c.pushEvent(ChatEvent{
+				Kind: EventHistory,
+				History: History{
+					Peer:     hist.PeerUsername,
+					Messages: msgs,
+					SelfUser: username,
+				},
+			})
 		}
 	}
 }

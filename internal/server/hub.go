@@ -96,6 +96,12 @@ func (h *Hub) handlePacket(ctx context.Context, conn *clientConn, pkt protocol.P
 			return err
 		}
 		return h.handleAcceptFriendRequest(ctx, conn, req)
+	case protocol.REQUEST_HISTORY:
+		var req protocol.HistoryRequest
+		if err := protocol.UnmarshalData(pkt.Data, &req); err != nil {
+			return err
+		}
+		return h.handleHistoryRequest(ctx, conn, req)
 	default:
 		return nil
 	}
@@ -129,6 +135,8 @@ func (h *Hub) handleFriendRequest(ctx context.Context, sender *clientConn, req p
 		return err
 	}
 
+	h.refreshContacts(ctx, sender.userID)
+
 	recipient := h.clientForUser(toUserID)
 	if recipient == nil {
 		return nil
@@ -136,6 +144,26 @@ func (h *Hub) handleFriendRequest(ctx context.Context, sender *clientConn, req p
 
 	return recipient.writePacket(protocol.FRIEND_REQUEST_RECEIVED, protocol.FriendRequestReceived{
 		FromUsername: sender.username,
+	})
+}
+
+func (h *Hub) handleHistoryRequest(ctx context.Context, conn *clientConn, req protocol.HistoryRequest) error {
+	entries, err := h.messages.GetConversationHistory(ctx, conn.userID, conn.username, req.PeerUsername)
+	if err != nil {
+		return err
+	}
+
+	msgs := make([]protocol.HistoryMessage, len(entries))
+	for i, e := range entries {
+		msgs[i] = protocol.HistoryMessage{
+			FromUsername: e.FromUsername,
+			Body:         e.Body,
+			CreatedAt:    e.CreatedAt,
+		}
+	}
+	return conn.writePacket(protocol.HISTORY_RESPONSE, protocol.HistoryResponse{
+		PeerUsername: req.PeerUsername,
+		Messages:     msgs,
 	})
 }
 
@@ -239,8 +267,9 @@ func (c *clientConn) sendContacts(ctx context.Context) error {
 		return err
 	}
 	return c.writePacket(protocol.CONTACTS_RESPONSE, protocol.ContactsResponse{
-		Friends:         contacts.Friends,
-		PendingRequests: contacts.PendingRequests,
+		Friends:          contacts.Friends,
+		PendingRequests:  contacts.PendingRequests,
+		OutgoingRequests: contacts.OutgoingRequests,
 	})
 }
 

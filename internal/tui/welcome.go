@@ -1,6 +1,9 @@
 package tui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"github.com/charmbracelet/lipgloss"
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 type welcomeModel struct{}
 
@@ -28,9 +31,13 @@ func (m welcomeModel) Update(msg tea.Msg) (welcomeModel, tea.Cmd) {
 }
 
 func (m welcomeModel) View() string {
-	return titleStyle.Render("byteChat") + "\n" +
-		subtitleStyle.Render("CLI chat over HTTPS + TCP/TLS") + "\n\n" +
-		labelStyle.Render("l") + helpStyle.Render(" login") + "\n" +
-		labelStyle.Render("r") + helpStyle.Render(" register") + "\n" +
-		labelStyle.Render("q") + helpStyle.Render(" quit")
+	logo := titleStyle.Render("byteChat")
+	tagline := subtitleStyle.Render("end-to-end CLI chat")
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(1, 3).
+		Render(logo + "\n" + tagline)
+
+	return box
 }

@@ -36,6 +36,14 @@ func TestFriendRequestFlow(t *testing.T) {
 		t.Fatalf("SendFriendRequest: %v", err)
 	}
 
+	aliceOutgoing, err := messages.ListContacts(ctx, aliceID)
+	if err != nil {
+		t.Fatalf("ListContacts alice after send: %v", err)
+	}
+	if len(aliceOutgoing.OutgoingRequests) != 1 || aliceOutgoing.OutgoingRequests[0] != "bob" {
+		t.Fatalf("unexpected alice outgoing: %+v", aliceOutgoing.OutgoingRequests)
+	}
+
 	pending, err := messages.ListContacts(ctx, bobID)
 	if err != nil {
 		t.Fatalf("ListContacts bob: %v", err)
@@ -54,6 +62,9 @@ func TestFriendRequestFlow(t *testing.T) {
 	}
 	if len(aliceContacts.Friends) != 1 || aliceContacts.Friends[0] != "bob" {
 		t.Fatalf("unexpected alice friends: %+v", aliceContacts)
+	}
+	if len(aliceContacts.OutgoingRequests) != 0 {
+		t.Fatalf("expected no outgoing for alice after accept: %+v", aliceContacts.OutgoingRequests)
 	}
 
 	_, _, err = messages.Send(ctx, aliceID, "bob", "hi")

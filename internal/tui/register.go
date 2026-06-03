@@ -120,6 +120,5 @@ func (m registerModel) View() string {
 		s += "\n" + statusStyle.Render("Creating account...")
 	}
 
-	s += "\n" + helpStyle.Render("enter submit • tab switch field • esc back")
 	return s
 }

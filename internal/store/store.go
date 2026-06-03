@@ -6,6 +6,7 @@ type StoredMessage struct {
 	ID           int64
 	FromUsername string
 	Body         string
+	CreatedAt    int64
 }
 
 type Store interface {
@@ -22,6 +23,8 @@ type Store interface {
 
 	ListFriends(ctx context.Context, userID int64) ([]string, error)
 	ListIncomingFriendRequests(ctx context.Context, userID int64) ([]string, error)
+	ListOutgoingFriendRequests(ctx context.Context, userID int64) ([]string, error)
+	ListConversationMessages(ctx context.Context, userID, peerUserID int64, limit int) ([]StoredMessage, error)
 	CreateFriendRequest(ctx context.Context, fromUserID, toUserID int64) error
 	AcceptFriendRequest(ctx context.Context, userID, fromUserID int64) error
 	AreFriends(ctx context.Context, userID, otherUserID int64) (bool, error)

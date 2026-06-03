@@ -83,14 +83,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case client.EventContacts:
 			if m.screen == screenChat {
 				m.chat, _ = m.chat.Update(contactsUpdatedMsg{
-					friends: msg.Contacts.Friends,
-					pending: msg.Contacts.PendingRequests,
+					friends:  msg.Contacts.Friends,
+					pending:  msg.Contacts.PendingRequests,
+					outgoing: msg.Contacts.OutgoingRequests,
 				})
 			}
 			return m, waitForChatEvent(m.chatConn)
 		case client.EventFriendRequest:
 			if m.screen == screenChat {
 				m.chat, _ = m.chat.Update(friendRequestMsg{from: msg.From})
+			}
+			return m, waitForChatEvent(m.chatConn)
+		case client.EventHistory:
+			if m.screen == screenChat {
+				msgs := make([]chatMessage, len(msg.History.Messages))
+				for i, hm := range msg.History.Messages {
+					msgs[i] = chatMessage{
+						from: hm.From,
+						body: hm.Body,
+						self: hm.From == msg.History.SelfUser,
+					}
+				}
+				m.chat, _ = m.chat.Update(historyMsg{peer: msg.History.Peer, messages: msgs})
 			}
 			return m, waitForChatEvent(m.chatConn)
 		}
@@ -150,13 +164,17 @@ func waitForChatEvent(conn *client.ChatClient) tea.Cmd {
 }
 
 func (m Model) View() string {
+	w := m.width
+	if w == 0 {
+		w = 80
+	}
 	switch m.screen {
 	case screenWelcome:
-		return m.welcome.View()
+		return m.welcome.View() + "\n" + welcomeHUD(w)
 	case screenLogin:
-		return m.login.View()
+		return m.login.View() + "\n" + authHUD(w)
 	case screenRegister:
-		return m.register.View()
+		return m.register.View() + "\n" + authHUD(w)
 	case screenChat:
 		return m.chat.View()
 	default:

@@ -23,8 +23,9 @@ type ReceiveMessage struct {
 }
 
 type ContactsResponse struct {
-	Friends         []string `json:"friends"`
-	PendingRequests []string `json:"pending_requests"`
+	Friends          []string `json:"friends"`
+	PendingRequests  []string `json:"pending_requests"`
+	OutgoingRequests []string `json:"outgoing_requests"`
 }
 
 type FriendRequest struct {
@@ -37,4 +38,19 @@ type AcceptFriendRequest struct {
 
 type FriendRequestReceived struct {
 	FromUsername string `json:"from_username"`
+}
+
+type HistoryRequest struct {
+	PeerUsername string `json:"peer_username"`
+}
+
+type HistoryMessage struct {
+	FromUsername string `json:"from_username"`
+	Body         string `json:"body"`
+	CreatedAt    int64  `json:"created_at"`
+}
+
+type HistoryResponse struct {
+	PeerUsername string           `json:"peer_username"`
+	Messages     []HistoryMessage `json:"messages"`
 }

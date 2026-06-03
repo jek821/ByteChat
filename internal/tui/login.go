@@ -120,6 +120,5 @@ func (m loginModel) View() string {
 		s += "\n" + statusStyle.Render("Signing in...")
 	}
 
-	s += "\n" + helpStyle.Render("enter submit • tab switch field • esc back")
 	return s
 }

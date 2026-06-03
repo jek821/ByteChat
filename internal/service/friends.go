@@ -16,8 +16,9 @@ var (
 )
 
 type Contacts struct {
-	Friends         []string
-	PendingRequests []string
+	Friends          []string
+	PendingRequests  []string
+	OutgoingRequests []string
 }
 
 func (s *MessageService) ListContacts(ctx context.Context, userID int64) (Contacts, error) {
@@ -29,7 +30,11 @@ func (s *MessageService) ListContacts(ctx context.Context, userID int64) (Contac
 	if err != nil {
 		return Contacts{}, err
 	}
-	return Contacts{Friends: friends, PendingRequests: pending}, nil
+	outgoing, err := s.store.ListOutgoingFriendRequests(ctx, userID)
+	if err != nil {
+		return Contacts{}, err
+	}
+	return Contacts{Friends: friends, PendingRequests: pending, OutgoingRequests: outgoing}, nil
 }
 
 func (s *MessageService) SendFriendRequest(ctx context.Context, fromUserID int64, toUsername string) (toUserID int64, err error) {
