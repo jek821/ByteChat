@@ -19,6 +19,9 @@ func main() {
 	httpsAddr := flag.String("https-addr", ":8443", "HTTPS listen address")
 	tcpAddr := flag.String("tcp-addr", ":8444", "TCP+TLS listen address")
 	createAdmin := flag.String("create-admin", "", "create or promote admin user (format: username:password)")
+	tlsCert := flag.String("tls-cert", "", "path to TLS certificate PEM (e.g. Let's Encrypt fullchain.pem)")
+	tlsKey := flag.String("tls-key", "", "path to TLS private key PEM")
+	tlsHostname := flag.String("tls-hostname", "", "hostname or IP for auto-generated cert (when not using -tls-cert)")
 	flag.Parse()
 
 	if err := logx.Init(); err != nil {
@@ -53,13 +56,22 @@ func main() {
 		log.Printf("admin user %q is ready", username)
 	}
 
-	tlsConfig, err := server.LoadTLSConfig()
+	tlsOpts := server.TLSOptions{
+		CertPath: *tlsCert,
+		KeyPath:  *tlsKey,
+		Hostname: *tlsHostname,
+	}
+	tlsConfig, err := server.LoadTLSConfig(tlsOpts)
 	if err != nil {
 		log.Fatalf("tls config: %v", err)
 	}
-	certPath, keyPath, err := server.CertFiles()
-	if err != nil {
-		log.Fatalf("cert files: %v", err)
+	certPath := *tlsCert
+	keyPath := *tlsKey
+	if certPath == "" || keyPath == "" {
+		certPath, keyPath, err = server.CertFiles()
+		if err != nil {
+			log.Fatalf("cert files: %v", err)
+		}
 	}
 
 	go func() {
@@ -74,6 +86,6 @@ func main() {
 		TLSConfig: tlsConfig,
 	}
 
-	logx.Info(logx.CatServer, "HTTPS listening on https://localhost%s", *httpsAddr)
+	logx.Info(logx.CatServer, "HTTPS listening on %s", *httpsAddr)
 	log.Fatal(srv.ListenAndServeTLS(certPath, keyPath))
 }

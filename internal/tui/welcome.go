@@ -5,10 +5,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-type welcomeModel struct{}
+type welcomeModel struct {
+	serverLabel string
+}
 
-func newWelcomeModel() welcomeModel {
-	return welcomeModel{}
+func newWelcomeModel(serverLabel string) welcomeModel {
+	return welcomeModel{serverLabel: serverLabel}
 }
 
 func (m welcomeModel) Init() tea.Cmd {
@@ -35,11 +37,15 @@ func (m welcomeModel) Update(msg tea.Msg) (welcomeModel, tea.Cmd) {
 func (m welcomeModel) View() string {
 	logo := titleStyle.Render("byteChat")
 	tagline := subtitleStyle.Render("end-to-end CLI chat")
+	serverLine := ""
+	if m.serverLabel != "" {
+		serverLine = "\n" + infoStyle.Render("Server: "+m.serverLabel)
+	}
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
 		Padding(1, 3).
-		Render(logo + "\n" + tagline)
+		Render(logo + "\n" + tagline + serverLine)
 
 	return box
 }

@@ -2,7 +2,6 @@ package client
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,18 +20,10 @@ type AdminClient struct {
 	client  *http.Client
 }
 
-func NewAdminClient(baseURL string) *AdminClient {
+func NewAdminClient(baseURL string, insecureTLS bool) *AdminClient {
 	return &AdminClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		client: &http.Client{
-			Timeout: 15 * time.Second,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					MinVersion:         tls.VersionTLS12,
-					InsecureSkipVerify: true,
-				},
-			},
-		},
+		client:  NewHTTPClient(insecureTLS, 15*time.Second),
 	}
 }
 

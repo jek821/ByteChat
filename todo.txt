@@ -1,0 +1,180 @@
+# byteChat — project review (2026-06-03)
+#
+# Priority: P0 = fix soon | P1 = important | P2 = nice to have | P3 = polish / future
+#
+# Run tests: go test ./...
+# Build:     go build -o bytechat-server ./cmd/bytechat-server && go build -o bytechat ./cmd/bytechat
+
+================================================================================
+P0 — BUGS / CORRECTNESS
+================================================================================
+
+[ ] Optimistic message send hides server rejections
+    - TUI appends messages after TCP write succeeds (internal/tui/chat.go)
+    - Hub returns errors for non-friends, unknown user, empty body but only logs
+      a warning (internal/server/hub.go) — client never sees failure
+    - Fix: add ERROR_RESPONSE (or similar) on TCP; client surfaces error; only
+      append to UI after server ack
+
+[ ] E2E keys are global per machine, not per account
+    - Single ~/.gochat/client/e2e_private.pem for all users (internal/service/cryptoService.go)
+    - Logging in as a different user on the same machine reuses wrong keys
+    - Fix: store keys under ~/.gochat/client/<username>/ or key by user id
+
+[ ] Misleading "end-to-end" branding
+    - Welcome tagline says "end-to-end CLI chat" (internal/tui/welcome.go)
+    - Messages are plaintext in SQLite; only E2E *key backup* exists today
+    - Fix: rename tagline OR implement message-layer encryption (see P1 E2E)
+
+[ ] systemd unit conflicts with default data paths
+    - deploy/bytechat-server.service sets ProtectHome=true and ReadWritePaths=/var/lib/bytechat
+    - Server actually writes to ~/.gochat/ (e.g. /home/bytechat/.gochat/)
+    - Fix: align service file with real paths or add BYTECHAT_DATA_DIR env support
+
+================================================================================
+P1 — SECURITY & PRODUCTION HARDENING
+================================================================================
+
+[ ] Session tokens never revoked
+    - sessions.revoked_at column exists but nothing sets it
+    - No logout API; stolen tokens work until user deleted / DB wiped
+    - Fix: RevokeSession store method, POST /api/logout, revoke on password change
+
+[ ] Admin API uses same session token as chat
+    - Admin login is normal auth + is_admin check (internal/service/admin.go)
+    - Compromise of chat token = admin access for admin users
+    - Consider: separate admin tokens, shorter TTL, or re-auth for destructive ops
+
+[ ] No HTTP server timeouts or body limits
+    - cmd/bytechat-server/main.go http.Server has no ReadHeaderTimeout, IdleTimeout
+    - Register/login decode unbounded JSON bodies
+    - Fix: standard Go hardening (timeouts, MaxBytesReader ~1MB)
+
+[ ] No auth rate limiting
+    - Unlimited login/register attempts over HTTPS
+    - Fix: per-IP rate limit middleware (even simple in-memory is a start)
+
+[ ] TCP protocol has no error responses
+    - Failed SEND_MESSAGE, friend ops, history fail silently on the wire
+    - Client cannot distinguish success from logged-only server-side failure
+    - Fix: ERROR packet type with code + message; handle in client readLoop
+
+[ ] Admin DELETE user URL not escaped
+    - internal/client/admin.go concatenates username into path
+    - Usernames with / or special chars can break routing
+    - Fix: url.PathEscape(username); validate username format at registration
+
+[ ] Username validation missing
+    - Only non-empty check on register (internal/service/auth.go)
+    - Allows path-like names, very long names, unicode edge cases
+    - Fix: regex/length rules (e.g. [a-zA-Z0-9_-]{3,32}); reject .. and /
+
+[ ] Database wipe leaves TCP sessions alive
+    - WipeAllData clears DB but hub still holds connected clients (internal/store/sqlite)
+    - Fix: hub.Wipe() callback to disconnect all clients after admin wipe
+
+================================================================================
+P1 — E2E ENCRYPTION (INCOMPLETE FEATURE)
+================================================================================
+
+Current state: X25519 keypair generated on register; encrypted private key stored
+on server for multi-device restore. Messages are NOT encrypted.
+
+[ ] Encrypt message bodies client-side before SEND_MESSAGE
+[ ] ECDH + AEAD session key per peer conversation
+[ ] Fetch/cache friend public keys (store.GetE2EPublicKey exists; paths.FriendE2EPubKeyPath unused)
+[ ] Decrypt on receive and in history load
+[ ] Protocol version or ciphertext/nonce fields in SendMessage/ReceiveMessage
+[ ] Document threat model: server sees metadata (who talks to whom, when), not content
+
+================================================================================
+P2 — UX / CLIENT
+================================================================================
+
+[ ] No loading indicator while conversation history loads
+    - Empty thread until HISTORY_RESPONSE arrives (internal/tui/chat.go)
+
+[ ] Friend accept UI optimistic before contacts refresh
+    - Shows "Accepted X" before incoming list updates
+
+[ ] Input length mismatch
+    - TUI caps at 512 chars; server accepts any non-empty body
+
+[ ] Chat disconnect handling split between app.go and chatModel
+    - Possible brief error flash before redirect to login
+
+[ ] No way to change server URL from inside TUI
+    - Must re-run bytechat -configure from shell
+
+[ ] Windows-first docs but mixed shell examples
+    - README uses bash; add PowerShell equivalents or note both work
+
+================================================================================
+P2 — TESTING
+================================================================================
+
+Untested packages (high value first):
+
+[ ] internal/client/chat.go — connect, send, event parsing, disconnect
+[ ] internal/client/http.go — register/login with mock server
+[ ] internal/server/hub.go — error paths (not friends, bad token, wipe)
+[ ] internal/router/admin.go — wipe, delete, auth failures
+[ ] internal/client/resolve.go — more config override edge cases
+[ ] internal/tui/ — optional: model unit tests for key flows
+
+Existing coverage: protocol, router auth, service auth/messaging/friends/history,
+sqlite store, hub deliver happy path, cryptoService, client config.
+
+================================================================================
+P2 — OPS / DEPLOYMENT
+================================================================================
+
+[ ] Add BYTECHAT_DATA_DIR or --data-dir flag for server state location
+    - Simplifies systemd/docker without relying on $HOME
+
+[ ] Certbot renewal hook example in deploy/
+    - Reload bytechat-server after cert renew
+
+[ ] Dockerfile (multi-stage build for server + optional client)
+
+[ ] GitHub Actions CI (go test, go vet, build on push)
+
+[ ] Add LICENSE file (project currently has none)
+
+[ ] CONTRIBUTING.md — how to run tests, code layout, priority areas
+
+================================================================================
+P3 — CODE QUALITY / CLEANUP
+================================================================================
+
+[ ] internal/server/server.go is an empty package stub — remove or document
+
+[ ] pkg/types/ duplicates store types but is unused — remove or wire in
+
+[ ] Protocol typo RECEIVE_MESSSAGE (three s) — keep for compat but alias/document
+
+[ ] Self-signed TLS cert never rotates (internal/server/tls.go); SerialNumber always 1
+
+[ ] TLS private key written with os.Create default permissions on first generate
+    - Prefer explicit 0600 (key path partially handled elsewhere)
+
+[ ] FriendE2EPubKeyPath(username) — sanitize username before use in filenames
+
+[ ] Consider graceful shutdown (SIGTERM) for http.Server and TCP listener
+
+[ ] Message length limit on server matching client (512 or configurable)
+
+[ ] Registration: optional email, password strength meter — future
+
+[ ] Metrics/health endpoint (GET /health) for VPS monitoring
+
+================================================================================
+README / DOCS GAPS (addressed in README update; verify after edits)
+================================================================================
+
+[x] Wire protocol JSON field is "code" not "type"
+[x] Clarify E2E: key backup only, messages plaintext on server today
+[x] Known limitations section
+[x] Session token persistence behavior
+[x] systemd data path note
+[x] Link to this todo.txt for contributors

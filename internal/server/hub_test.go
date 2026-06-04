@@ -65,7 +65,7 @@ func TestHubDeliverMessage(t *testing.T) {
 		t.Fatalf("AcceptFriendRequest: %v", err)
 	}
 
-	tlsConfig, err := LoadTLSConfig()
+	tlsConfig, err := LoadTLSConfig(TLSOptions{})
 	if err != nil {
 		t.Fatalf("LoadTLSConfig: %v", err)
 	}
@@ -87,13 +87,13 @@ func TestHubDeliverMessage(t *testing.T) {
 		}
 	}()
 
-	aliceClient := client.NewChatClient(ln.Addr().String())
+	aliceClient := client.NewChatClient(ln.Addr().String(), true)
 	if err := aliceClient.Connect(alice.Token); err != nil {
 		t.Fatalf("connect alice: %v", err)
 	}
 	t.Cleanup(func() { aliceClient.Close() })
 
-	bobClient := client.NewChatClient(ln.Addr().String())
+	bobClient := client.NewChatClient(ln.Addr().String(), true)
 	if err := bobClient.Connect(bob.Token); err != nil {
 		t.Fatalf("connect bob: %v", err)
 	}

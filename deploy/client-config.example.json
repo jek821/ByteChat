@@ -1,0 +1,5 @@
+{
+  "server_url": "https://chat.example.com:8443",
+  "tcp_addr": "chat.example.com:8444",
+  "insecure_tls": false
+}

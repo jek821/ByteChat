@@ -26,7 +26,7 @@ func New(cfg Config) Model {
 	return Model{
 		cfg:      cfg,
 		screen:   screenWelcome,
-		welcome:  newWelcomeModel(),
+		welcome:  newWelcomeModel(cfg.ServerLabel),
 		login:    newLoginModel(cfg.Auth),
 		register: newRegisterModel(cfg.Auth),
 	}
@@ -146,7 +146,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) connectChat(creds client.Credentials, from screen) (Model, tea.Cmd) {
-	chatConn := client.NewChatClient(m.cfg.TCPAddr)
+	chatConn := client.NewChatClient(m.cfg.TCPAddr, m.cfg.InsecureTLS)
 	if err := chatConn.Connect(creds.Token); err != nil {
 		switch from {
 		case screenRegister:

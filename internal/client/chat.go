@@ -54,15 +54,12 @@ type ChatClient struct {
 	username  string
 }
 
-func NewChatClient(addr string) *ChatClient {
+func NewChatClient(addr string, insecureTLS bool) *ChatClient {
 	return &ChatClient{
-		addr: addr,
-		tlsConfig: &tls.Config{
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: true,
-		},
-		events: make(chan ChatEvent, 32),
-		done:   make(chan struct{}),
+		addr:      addr,
+		tlsConfig: TLSConfig(insecureTLS),
+		events:    make(chan ChatEvent, 32),
+		done:      make(chan struct{}),
 	}
 }
 

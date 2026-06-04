@@ -2,7 +2,6 @@ package client
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -21,19 +20,11 @@ type HTTPAuth struct {
 	client  *http.Client
 }
 
-func NewHTTPAuth(baseURL string) *HTTPAuth {
+func NewHTTPAuth(baseURL string, insecureTLS bool) *HTTPAuth {
 	baseURL = strings.TrimRight(baseURL, "/")
 	return &HTTPAuth{
 		baseURL: baseURL,
-		client: &http.Client{
-			Timeout: 15 * time.Second,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					MinVersion:         tls.VersionTLS12,
-					InsecureSkipVerify: true, // self-signed localhost cert
-				},
-			},
-		},
+		client:  NewHTTPClient(insecureTLS, 15*time.Second),
 	}
 }
 

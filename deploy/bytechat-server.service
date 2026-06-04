@@ -1,0 +1,32 @@
+# byteChat server — systemd unit example
+#
+# Install:
+#   sudo cp deploy/bytechat-server.service /etc/systemd/system/
+#   sudo systemctl edit bytechat-server   # set TLS cert paths, hostname, etc.
+#   sudo systemctl enable --now bytechat-server
+
+[Unit]
+Description=byteChat server (HTTPS + TCP+TLS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bytechat
+Group=bytechat
+WorkingDirectory=/opt/bytechat
+ExecStart=/opt/bytechat/bytechat-server \
+  -https-addr :8443 \
+  -tcp-addr :8444 \
+  -tls-cert /etc/letsencrypt/live/chat.example.com/fullchain.pem \
+  -tls-key /etc/letsencrypt/live/chat.example.com/privkey.pem
+Restart=on-failure
+RestartSec=5
+
+# Hardening (optional — adjust paths for your install)
+NoNewPrivileges=true
+# Server data defaults to /home/bytechat/.gochat/ when User=bytechat
+ReadWritePaths=/home/bytechat/.gochat
+
+[Install]
+WantedBy=multi-user.target

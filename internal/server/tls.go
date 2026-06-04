@@ -8,14 +8,22 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net"
 	"os"
 	"time"
 
 	"ByteChat/internal/paths"
 )
 
+// TLSOptions configures how the server loads or generates TLS certificates.
+type TLSOptions struct {
+	CertPath string // optional; defaults to ~/.gochat/server/cert.pem
+	KeyPath  string // optional; defaults to ~/.gochat/server/key.pem
+	Hostname string // DNS name or IP for auto-generated self-signed certs
+}
+
 // EnsureCert generates a self-signed TLS certificate if one is not already on disk.
-func EnsureCert() error {
+func EnsureCert(hostname string) error {
 	certPath, err := paths.CertPath()
 	if err != nil {
 		return err
@@ -29,6 +37,8 @@ func EnsureCert() error {
 		return nil
 	}
 
+	dnsNames, ipAddrs := certSANs(hostname)
+
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject:      pkix.Name{Organization: []string{"byteChat"}},
@@ -36,7 +46,8 @@ func EnsureCert() error {
 		NotAfter:     time.Now().AddDate(1, 0, 0),
 		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost"},
+		DNSNames:     dnsNames,
+		IPAddresses:  ipAddrs,
 	}
 
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -66,19 +77,45 @@ func EnsureCert() error {
 	return pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 }
 
-// LoadTLSConfig loads or creates the server certificate and returns a TLS config.
-func LoadTLSConfig() (*tls.Config, error) {
-	if err := EnsureCert(); err != nil {
-		return nil, err
+func certSANs(hostname string) (dns []string, ips []net.IP) {
+	seen := map[string]bool{}
+	addDNS := func(name string) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		dns = append(dns, name)
 	}
 
-	certPath, err := paths.CertPath()
-	if err != nil {
-		return nil, err
+	addDNS("localhost")
+	if hostname != "" {
+		if ip := net.ParseIP(hostname); ip != nil {
+			ips = append(ips, ip)
+		} else {
+			addDNS(hostname)
+		}
 	}
-	keyPath, err := paths.KeyPath()
-	if err != nil {
-		return nil, err
+	return dns, ips
+}
+
+// LoadTLSConfig loads or creates the server certificate and returns a TLS config.
+func LoadTLSConfig(opts TLSOptions) (*tls.Config, error) {
+	certPath := opts.CertPath
+	keyPath := opts.KeyPath
+
+	if certPath == "" || keyPath == "" {
+		if err := EnsureCert(opts.Hostname); err != nil {
+			return nil, err
+		}
+		var err error
+		certPath, err = paths.CertPath()
+		if err != nil {
+			return nil, err
+		}
+		keyPath, err = paths.KeyPath()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)

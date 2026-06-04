@@ -16,6 +16,7 @@ const (
 	clientPrivKey  = "e2e_private.pem"
 	clientPubKey   = "e2e_public.pem"
 	logConfig      = "log_config.json"
+	clientConfig   = "config.json"
 )
 
 func RootDir() (string, error) {
@@ -127,4 +128,12 @@ func LogConfigPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, logConfig), nil
+}
+
+func ClientConfigPath() (string, error) {
+	dir, err := ClientDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, clientConfig), nil
 }
